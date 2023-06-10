@@ -17,4 +17,3 @@ contract Bonus {
         return  valorDaVenda * fatorDoBonus / 100;
     }
 }
-//0xd064A7CDBeD149Cf7d8C90Ca32bbAC40b5D1d92D
