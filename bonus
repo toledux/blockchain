@@ -1,0 +1,20 @@
+//SPDX-License-Identifier: CC-BY-4.0
+
+pragma solidity 0.8.20;
+
+contract Bonus {
+    string public nomeDoVendedor;
+    uint256 public fatorDoBonus;
+    uint256 public valorDaVenda;
+
+    function atribuirDados(string memory nomeVendedor, uint256 fatorBonus, uint256 valorVenda) public {
+        nomeDoVendedor = nomeVendedor;
+        valorDaVenda = valorVenda;
+        fatorDoBonus = fatorBonus;
+    }
+    
+    function calcularBonus() public view returns (uint256) {
+        return  valorDaVenda * fatorDoBonus / 100;
+    }
+}
+//0x523AdB6Fabc9B401543cBb0111C80b5c77819b80
