@@ -7,7 +7,7 @@ contract Bonus {
     uint256 public fatorDoBonus;
     uint256 public valorDaVenda;
 
-    function atribuirDados(string memory nomeVendedor, uint256 fatorBonus, uint256 valorVenda) public {
+    function atribuirValores(string memory nomeVendedor, uint256 fatorBonus, uint256 valorVenda) public {
         nomeDoVendedor = nomeVendedor;
         valorDaVenda = valorVenda;
         fatorDoBonus = fatorBonus;
