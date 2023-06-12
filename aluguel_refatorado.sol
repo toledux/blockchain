@@ -4,60 +4,80 @@ pragma solidity 0.8.20;
 
 //0xF48271227483f717F9fE08296360B45e0A70C5cC
 contract Aula3 {
-    uint256 constant NUMERO_MAXIMO_DE_PARCELAS = 36; 
-    uint256 constant TIPO_PESSOA_LOCADOR = 1;
-    uint256 constant TIPO_PESSOA_LOCATARIO = 2;
+    uint8 constant NUMERO_MAXIMO_DE_PARCELAS = 36; 
+    uint8 constant TAMANHO_MINIMO_DO_NOME = 3;
 
-    //string private nomeDoLocador;
-    //string private nomeDoLocatario;
-    //uint256[NUMERO_MAXIMO_DE_PARCELAS] private parcelasDoAluguel;
-    struct ContratoLocacao{
-        string nomeDoLocador;
-        string nomeDoLocatario;
-        uint256[NUMERO_MAXIMO_DE_PARCELAS] parcelasDoAluguel; 
+    enum TipoPessoa{ INVALIDO, LOCADOR, LOCATARIO }
+
+    struct Pessoa{
+        string nome;
+        TipoPessoa tipo;
     }
+
+    struct ContratoLocacao{
+        Pessoa locador;
+        Pessoa locatario;
+        uint256[NUMERO_MAXIMO_DE_PARCELAS] boletos; 
+    }
+
+    modifier stringValido(string memory nome, string memory valor){
+        bytes memory nomeBytes = bytes(nome);
+        bytes memory campoBytes = bytes("Campo ");
+        bytes memory naoValidoBytes = bytes(" nao e um valor valido");
+        bytes memory concatenated = abi.encodePacked(campoBytes, nomeBytes, naoValidoBytes);
+       
+        require(bytes(valor).length >= TAMANHO_MINIMO_DO_NOME, string(concatenated));
+        _;
+    }
+
+    modifier tipoPessoaValido(TipoPessoa tipoPessoa){
+        require(
+            tipoPessoa == TipoPessoa.LOCADOR || 
+            tipoPessoa == TipoPessoa.LOCATARIO, "Tipo de pessoa informada e invalido." );
+        _;
+    }
+    
 
     ContratoLocacao private contratoLocacao;
 
-
-    constructor(string memory _nomeDoLocador, string memory _nomeDoLocatario, uint256 valorInicialDasParcelas) {
-        contratoLocacao.nomeDoLocador = _nomeDoLocador;
-        contratoLocacao.nomeDoLocatario = _nomeDoLocatario;
+    constructor(string memory nomeDoLocador, string memory nomeDoLocatario, uint256 valorDasParcelas) {
+        contratoLocacao.locador = Pessoa(nomeDoLocador,TipoPessoa.LOCADOR);
+        contratoLocacao.locatario = Pessoa(nomeDoLocatario, TipoPessoa.LOCATARIO);
         for (uint8 i=0; i<NUMERO_MAXIMO_DE_PARCELAS; i++){
-            contratoLocacao.parcelasDoAluguel[i]=valorInicialDasParcelas;
+            contratoLocacao.boletos[i] = valorDasParcelas;
         }
     }
 
-
-    function retornarValorDoAluguel(uint256 posicaoDaParcela) external view returns(uint256 valorDaParcela) {
-        
-        return contratoLocacao.parcelasDoAluguel[posicaoDaParcela -1];
+    function retornarValorDoAluguel(uint8 parcelaDoBoleto) external view returns(uint256 valorDaParcela) {
+        require(verificarValidadeDaParcela(parcelaDoBoleto), "A parcela escolhida e invalida.");
+        return contratoLocacao.boletos[parcelaDoBoleto -1];
     }
 
-    function retornarNomeDoLocadorELocatario() external view returns(string memory, string memory){
-        return (contratoLocacao.nomeDoLocador, contratoLocacao.nomeDoLocatario);
+    function retornarNomeDoLocadorELocatario() external view returns(Pessoa memory, Pessoa memory){
+        return (contratoLocacao.locador, contratoLocacao.locatario);
     }
 
-    function alterarNome(uint256 tipoPessoa, string memory nome) external{
-        require(tipoPessoa > 0 && tipoPessoa < 3, "tipoPessoa deve ser 1 para Locador ou 2 para Locatario.");
-        require(bytes(nome).length > 0, "Nome invalido");
+    function alterarNome(TipoPessoa tipoPessoa, string memory nome) 
+        external 
+        stringValido("nome",nome) 
+        tipoPessoaValido(tipoPessoa)
+        {
+            if(TipoPessoa.LOCADOR == tipoPessoa){
+                contratoLocacao.locador.nome = nome;
+            } else if(TipoPessoa.LOCATARIO == tipoPessoa){
+                contratoLocacao.locatario.nome = nome;
+            }
+    }
 
-        if(tipoPessoa == TIPO_PESSOA_LOCADOR){
-            contratoLocacao.nomeDoLocador = nome;
-        } else if (tipoPessoa == TIPO_PESSOA_LOCATARIO){
-            contratoLocacao.nomeDoLocatario = nome;
+    function reajustarParcelas(uint8 parcelaInicialParaReajuste, uint256 valorDoReajuste) external{
+        require(verificarValidadeDaParcela(parcelaInicialParaReajuste), "A parcela escolhida para o reajuste e invalida.");
+        for (uint256 i = parcelaInicialParaReajuste-1; i < NUMERO_MAXIMO_DE_PARCELAS; i++){
+            contratoLocacao.boletos[i] = contratoLocacao.boletos[i] + valorDoReajuste;
         }
     }
 
-    function reajustarParcelas(uint256 posicaoDaParcelaInicialParaReajuste, uint256 valorDoReajuste) external{
-        require(verificarValidadeDoMes(posicaoDaParcelaInicialParaReajuste), "Mes escolhido para o reajuste e invalido.");
-        for (uint256 i = posicaoDaParcelaInicialParaReajuste-1; i < NUMERO_MAXIMO_DE_PARCELAS; i++){
-            contratoLocacao.parcelasDoAluguel[i] = contratoLocacao.parcelasDoAluguel[i] + valorDoReajuste;
-        }
-    }
-
-    function verificarValidadeDoMes(uint256 posicaoDaParcelaInicialParaReajuste) internal pure returns(bool){
-        return posicaoDaParcelaInicialParaReajuste >= 0 && posicaoDaParcelaInicialParaReajuste <=NUMERO_MAXIMO_DE_PARCELAS;
+    function verificarValidadeDaParcela(uint8 parcelaDoBoleto) internal pure returns(bool){
+        return parcelaDoBoleto > 0 && parcelaDoBoleto <=NUMERO_MAXIMO_DE_PARCELAS;
     } 
 
 }
