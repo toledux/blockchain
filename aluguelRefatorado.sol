@@ -3,7 +3,7 @@
 pragma solidity 0.8.20;
 
 //0x699609b7C3F697c9e56b62F0bBf21D369F3e0126
-contract Aula3 {
+contract AluguelRefatorado {
     uint8 constant NUMERO_MAXIMO_DE_PARCELAS = 36; 
     uint8 constant TAMANHO_MINIMO_DO_NOME = 3;
 
