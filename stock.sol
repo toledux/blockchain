@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 pragma solidity 0.8.20;
 
+//0x8eE5B68e89d86f5662d02200cD0FF7baa8065067
+
 contract Ownable {
     address internal owner;
     
@@ -12,14 +14,12 @@ contract Ownable {
     constructor() {
         owner = msg.sender;
     }
-
 }
-
-
 
 contract Stock is Ownable{
     event Transfer(address indexed from, address indexed to, uint256 amount);
     event Approval(address indexed owner, address indexed spender, uint256 amount);
+    event IPO(string indexed msg, address indexed owner, uint256 amount);
 
     struct Stockholder{
         address identity;
@@ -31,9 +31,12 @@ contract Stock is Ownable{
     string public symbol;
     uint8 public immutable decimals;
 
-    uint256 public treasury;
+    uint256 public totalSupply;
+    mapping(address => uint256) public balanceOf;
+
+    address[] private indexStockholders;
     mapping(address => Stockholder) public stockholders;
-    mapping(address => mapping(address => uint256)) public allowance;
+    
 
     uint256 internal immutable INITIAL_CHAIN_ID;
     bytes32 internal immutable INITIAL_DOMAIN_SEPARATOR;
@@ -42,99 +45,71 @@ contract Stock is Ownable{
     constructor(
         string memory _name,
         string memory _symbol,
-        uint8 _decimals
+        uint256 amountOfStocks
     ) {
         name = _name;
         symbol = _symbol;
-        decimals = _decimals;
+        decimals = 0;
+        indexStockholders.push(msg.sender);
+        stockholders[msg.sender] = Stockholder(msg.sender, amountOfStocks, true);
+        balanceOf[msg.sender] = amountOfStocks;
+        totalSupply=amountOfStocks;
 
         INITIAL_CHAIN_ID = block.chainid;
         INITIAL_DOMAIN_SEPARATOR = computeDomainSeparator();
+
+        emit IPO("successful IPO",msg.sender, amountOfStocks);
     }
 
     modifier isSellerAStockholder(){
-        require(stockholders[msg.sender].isStockholder, "The sender is not a stockholder of the company.");
+        require(stockholders[msg.sender].isStockholder, "The order was rejected because the sender is not a stockholder of the company.");
         _;
     }
 
-    modifier hasEnoughStocksToSell(uint256 amount){
-        require(stockholders[msg.sender].stocks >= amount, "Seller doesn't have enough stocks.");
+    modifier hasEnoughStocks(address seller, uint256 amount){
+        require(stockholders[seller].stocks >= amount, "The order was rejected because of insufficient stocks available.");
         _;
     }
 
-    function transfer(address buyer, uint256 amount) public virtual isSellerAStockholder hasEnoughStocksToSell(amount) returns (bool) {
-        stockholders[msg.sender].stocks -= amount;
-        // Cannot overflow because the sum of all user
-        // balances can't exceed the max uint256 value.
-        unchecked {
-            stockholders[buyer].stocks += amount;
-        }
-        emit Transfer(msg.sender, buyer, amount);
+    function transfer(
+        address buyer, uint256 amountOfStocks
+    ) public virtual isSellerAStockholder hasEnoughStocks(msg.sender,amountOfStocks) returns (bool) {
+        stockholders[msg.sender].stocks -= amountOfStocks;
+        balanceOf[msg.sender] -= amountOfStocks;
+        require( completeTransfer(buyer, amountOfStocks), "Transfer not completed");
+        
+        emit Transfer(msg.sender, buyer, amountOfStocks);
         return true;
     }
 
     function transferFrom(
         address seller,
         address buyer,
-        uint256 amount
-    ) public virtual returns (bool) {
-        uint256 allowed = allowance[seller][msg.sender]; // Saves gas for limited approvals.
+        uint256 amountOfStocks
+    ) public virtual hasEnoughStocks(seller, amountOfStocks) returns (bool) {
+        stockholders[seller].stocks -= amountOfStocks;
+        balanceOf[seller] -= amountOfStocks;
 
-        if (allowed != type(uint256).max) allowance[seller][msg.sender] = allowed - amount;
+        require( completeTransfer(buyer, amountOfStocks), "Transfer not completed");
 
-        stockholders[seller].stocks -= amount;
-        // Cannot overflow because the sum of all user
-        // balances can't exceed the max uint256 value.
-        unchecked {
-            stockholders[buyer].stocks += amount;
-        }
-        emit Transfer(seller, buyer, amount);
+        emit Transfer(seller, buyer, amountOfStocks);
         return true;
     }
 
-    function permit(
-        address owner,
-        address spender,
-        uint256 value,
-        uint256 deadline,
-        uint8 v,
-        bytes32 r,
-        bytes32 s
-    ) public virtual {
-        require(deadline >= block.timestamp, "PERMIT_DEADLINE_EXPIRED");
 
-        // Unchecked because the only math done is incrementing
-        // the owner's nonce which cannot realistically overflow.
-        unchecked {
-            address recoveredAddress = ecrecover(
-                keccak256(
-                    abi.encodePacked(
-                        "\x19\x01",
-                        DOMAIN_SEPARATOR(),
-                        keccak256(
-                            abi.encode(
-                                keccak256(
-                                    "Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)"
-                                ),
-                                owner,
-                                spender,
-                                value,
-                                nonces[owner]++,
-                                deadline
-                            )
-                        )
-                    )
-                ),
-                v,
-                r,
-                s
-            );
-            require(recoveredAddress != address(0) && recoveredAddress == owner, "INVALID_SIGNER");
-            allowance[recoveredAddress][spender] = value;
+    function completeTransfer(address buyer, uint256 amountOfStocks) internal returns(bool){
+        if(!stockholders[buyer].isStockholder){
+            stockholders[buyer] = Stockholder(buyer, amountOfStocks, true);
+            indexStockholders.push(buyer);
+            balanceOf[buyer] = amountOfStocks;
+        } else {
+            stockholders[buyer].stocks += amountOfStocks;
+            balanceOf[buyer] += amountOfStocks;
         }
 
-        emit Approval(owner, spender, value);
+        return true;
     }
+
 
     function DOMAIN_SEPARATOR() public view virtual returns (bytes32) {
         return block.chainid == INITIAL_CHAIN_ID ? INITIAL_DOMAIN_SEPARATOR : computeDomainSeparator();
@@ -153,27 +128,32 @@ contract Stock is Ownable{
             );
     }
 
-    function bonus(uint256 amount) public onlyOwner {
-        treasury += amount;
-        
-        // Cannot overflow because the sum of all user
-        // balances can't exceed the max uint256 value.
-        unchecked {
-            stockholders[to].stocks += amount;
-        }
+    function bonus(uint16 bonusFactor) public onlyOwner {
+        for(uint256 i; i < indexStockholders.length; i++){
+            uint256 amountOfStocks = stockholders[indexStockholders[i]].stocks*bonusFactor/100;
+            stockholders[indexStockholders[i]].stocks += amountOfStocks;
+            balanceOf[indexStockholders[i]] += amountOfStocks;
+            totalSupply+=amountOfStocks;
 
-        emit Transfer(address(0), to, amount);
+            emit Transfer(address(0), stockholders[indexStockholders[i]].identity, amountOfStocks);
+        }
+        
     }
 
-    function burn(address from, uint256 amount) public onlyOwner {
-        stockholders[from].stocks -= amount;
+    function burnStocksInTreasury(uint256 amountOfStocks) external onlyOwner hasEnoughStocks(stockholders[owner].identity, amountOfStocks) {
+        stockholders[owner].stocks -= amountOfStocks;
+        balanceOf[owner] -= amountOfStocks;
+        totalSupply -=totalSupply;
 
-        // Cannot underflow because a user's balance
-        // will never be larger than the total supply.
-        unchecked {
-            treasury -= amount;
-        }
+        emit Transfer(owner, address(0), amountOfStocks);
+    }
 
-        emit Transfer(from, address(0), amount);
+    function percentageOfCompany() external view returns(uint256){
+        return stockholders[msg.sender].stocks * 100 / totalSupply;
+    }
+
+    function stocks() external view returns (uint256){
+        return stockholders[msg.sender].stocks;
     }
 }
+//Retirei os uncheckeds
